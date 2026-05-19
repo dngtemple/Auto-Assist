@@ -8,6 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { colors, spacing, radius, typography, shadow } from '../../theme';
 import Card from '../../components/common/Card';
 import StatusBadge from '../../components/common/StatusBadge';
+import VerifiedBadge from '../../components/common/VerifiedBadge';
 import api from '../../services/api';
 
 const QUICK_ACTIONS = [
@@ -124,9 +125,12 @@ export default function OwnerHomeScreen({ navigation }: any) {
                     </View>
                     <View style={styles.jobInfo}>
                       <Text style={styles.jobTitle} numberOfLines={1}>{job.issueDescription}</Text>
-                      <Text style={styles.jobMeta}>
-                        {job.mechanic ? `Mechanic: ${job.mechanic.name}` : 'Awaiting mechanic'}
-                      </Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <Text style={styles.jobMeta} numberOfLines={1}>
+                          {job.mechanic ? `Mechanic: ${job.mechanic.name}` : 'Awaiting mechanic'}
+                        </Text>
+                        {job.mechanic?.isCertified && <VerifiedBadge size="sm" iconOnly />}
+                      </View>
                     </View>
                     <StatusBadge status={job.status} size="sm" />
                   </View>

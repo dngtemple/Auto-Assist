@@ -16,6 +16,11 @@ export interface User {
   rating?: number;
   totalJobs?: number;
   isApproved?: boolean;
+  isCertified?: boolean;
+  certifiedAt?: string | null;
+  certificateUrl?: string | null;
+  certificateSubmittedAt?: string | null;
+  certificateStatus?: 'NONE' | 'PENDING' | 'APPROVED' | 'REJECTED';
 }
 
 interface AuthState {

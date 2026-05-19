@@ -50,7 +50,7 @@ router.get('/mine', protect, async (req, res) => {
       : { mechanic: req.user._id };
     const requests = await Request.find(filter)
       .populate('owner', 'name phone avatar')
-      .populate('mechanic', 'name phone avatar rating specialization')
+      .populate('mechanic', 'name phone avatar rating specialization isCertified')
       .sort({ createdAt: -1 });
     res.json(requests);
   } catch (err) {
@@ -63,7 +63,7 @@ router.get('/:id', protect, async (req, res) => {
   try {
     const request = await Request.findById(req.params.id)
       .populate('owner', 'name phone avatar')
-      .populate('mechanic', 'name phone avatar rating specialization');
+      .populate('mechanic', 'name phone avatar rating specialization isCertified');
     if (!request) return res.status(404).json({ message: 'Request not found' });
     res.json(request);
   } catch (err) {
@@ -98,7 +98,7 @@ router.patch('/:id/status', protect, async (req, res) => {
     }
     const request = await Request.findByIdAndUpdate(req.params.id, updates, { new: true })
       .populate('owner', 'name phone avatar')
-      .populate('mechanic', 'name phone avatar rating');
+      .populate('mechanic', 'name phone avatar rating isCertified');
     res.json(request);
   } catch (err) {
     res.status(400).json({ message: err.message });

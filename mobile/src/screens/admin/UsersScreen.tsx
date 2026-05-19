@@ -1,15 +1,23 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, FlatList, TouchableOpacity,
-  StatusBar, TextInput, Alert, RefreshControl,
+  StatusBar, TextInput, Alert, RefreshControl, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import api from '../../services/api';
+import api, { SERVER_ROOT } from '../../services/api';
 import Card from '../../components/common/Card';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { colors, spacing, radius, typography } from '../../theme';
 
-const ROLE_FILTERS = ['ALL', 'CAR_OWNER', 'MECHANIC', 'ADMIN'];
+const ROLE_FILTERS = ['ALL', 'CAR_OWNER', 'MECHANIC', 'ADMIN', 'PENDING_CERT'];
+
+const FILTER_LABEL: Record<string, string> = {
+  ALL: 'All',
+  CAR_OWNER: 'Owners',
+  MECHANIC: 'Mechanics',
+  ADMIN: 'Admins',
+  PENDING_CERT: 'Pending',
+};
 
 export default function AdminUsersScreen({ route }: any) {
   const initialRole = route.params?.role || 'ALL';
@@ -23,11 +31,18 @@ export default function AdminUsersScreen({ route }: any) {
   const load = useCallback(async () => {
     try {
       const params: any = { limit: 50 };
-      if (roleFilter !== 'ALL') params.role = roleFilter;
+      if (roleFilter === 'PENDING_CERT') {
+        params.role = 'MECHANIC';
+      } else if (roleFilter !== 'ALL') {
+        params.role = roleFilter;
+      }
       if (search) params.search = search;
       const { data } = await api.get('/admin/users', { params });
-      setUsers(data.users);
-      setTotal(data.total);
+      const filtered = roleFilter === 'PENDING_CERT'
+        ? data.users.filter((u: any) => u.certificateStatus === 'PENDING')
+        : data.users;
+      setUsers(filtered);
+      setTotal(roleFilter === 'PENDING_CERT' ? filtered.length : data.total);
     } catch (_) {}
     setLoading(false);
   }, [roleFilter, search]);
@@ -45,6 +60,63 @@ export default function AdminUsersScreen({ route }: any) {
         },
       },
     ]);
+  };
+
+  const submitDecision = async (userId: string, decision: 'APPROVE' | 'REJECT' | 'REVOKE') => {
+    try {
+      const { data } = await api.patch(`/admin/users/${userId}/certify`, { decision });
+      setUsers((u) => u.map((user) => user._id === userId ? {
+        ...user,
+        isCertified: data.isCertified,
+        certifiedAt: data.certifiedAt,
+        certificateStatus: data.certificateStatus,
+      } : user));
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Failed to update certification');
+    }
+  };
+
+  const confirmCertify = (userId: string) => {
+    Alert.alert('Certify Mechanic', 'Approve this mechanic? They will be shown as verified to car owners.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Approve', onPress: () => submitDecision(userId, 'APPROVE') },
+    ]);
+  };
+
+  const confirmReject = (userId: string) => {
+    Alert.alert('Reject Certificate', 'Reject this mechanic’s submitted certificate? They will be asked to upload a new one.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: () => submitDecision(userId, 'REJECT') },
+    ]);
+  };
+
+  const confirmRevoke = (userId: string) => {
+    Alert.alert('Revoke Certification', 'Revoke this mechanic’s certified status?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Revoke', style: 'destructive', onPress: () => submitDecision(userId, 'REVOKE') },
+    ]);
+  };
+
+  const viewCertificate = (item: any) => {
+    if (!item.certificateUrl) {
+      Alert.alert('No certificate', 'This mechanic has not uploaded a certificate yet.');
+      return;
+    }
+    Linking.openURL(`${SERVER_ROOT}${item.certificateUrl}`).catch(() =>
+      Alert.alert('Error', 'Unable to open the file.')
+    );
+  };
+
+  const openReviewSheet = (item: any) => {
+    Alert.alert(
+      'Review Certificate',
+      `${item.name} submitted a business certificate. Choose an action.`,
+      [
+        { text: 'View File', onPress: () => viewCertificate(item) },
+        { text: 'Approve', onPress: () => submitDecision(item._id, 'APPROVE') },
+        { text: 'Reject', style: 'destructive', onPress: () => submitDecision(item._id, 'REJECT') },
+      ]
+    );
   };
 
   const deleteUser = async (userId: string, name: string) => {
@@ -65,6 +137,26 @@ export default function AdminUsersScreen({ route }: any) {
     CAR_OWNER: colors.primary,
     MECHANIC: colors.accent,
     ADMIN: colors.info,
+  };
+
+  const getUserStatus = (item: any): { label: string; color: string; icon: any } => {
+    if (!item.isApproved) {
+      return { label: 'Blocked', color: colors.danger, icon: 'ban' };
+    }
+    if (item.role === 'MECHANIC') {
+      const s = item.certificateStatus || 'NONE';
+      if (item.isCertified || s === 'APPROVED') {
+        return { label: 'Verified', color: colors.info, icon: 'checkmark-circle' };
+      }
+      if (s === 'PENDING') {
+        return { label: 'Pending', color: colors.warning, icon: 'time' };
+      }
+      if (s === 'REJECTED') {
+        return { label: 'Rejected', color: colors.danger, icon: 'close-circle' };
+      }
+      return { label: 'Unverified', color: colors.textSecondary, icon: null };
+    }
+    return { label: 'Active', color: colors.success, icon: null };
   };
 
   if (loading) return <LoadingSpinner fullScreen message="Loading users..." />;
@@ -102,7 +194,7 @@ export default function AdminUsersScreen({ route }: any) {
             onPress={() => setRoleFilter(r)}
           >
             <Text style={[styles.filterText, roleFilter === r && styles.filterTextActive]}>
-              {r === 'CAR_OWNER' ? 'Owners' : r === 'ALL' ? 'All' : r.charAt(0) + r.slice(1).toLowerCase()}
+              {FILTER_LABEL[r] || r}
             </Text>
           </TouchableOpacity>
         ))}
@@ -119,51 +211,84 @@ export default function AdminUsersScreen({ route }: any) {
             <Text style={styles.emptyText}>No users found</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <Card style={styles.userCard}>
-            <View style={styles.userTop}>
-              <View style={[styles.avatar, { backgroundColor: ROLE_COLOR[item.role] }]}>
-                <Text style={styles.avatarText}>{item.name?.charAt(0).toUpperCase()}</Text>
+        renderItem={({ item }) => {
+          const status = getUserStatus(item);
+          const roleLabel = item.role === 'CAR_OWNER' ? 'Owner' : item.role === 'MECHANIC' ? 'Mechanic' : 'Admin';
+          return (
+            <Card style={item.isApproved ? styles.userCard : { ...styles.userCard, ...styles.userCardBlocked }}>
+              <View style={styles.userTop}>
+                <View style={[styles.avatar, { backgroundColor: ROLE_COLOR[item.role] }]}>
+                  <Text style={styles.avatarText}>{item.name?.charAt(0).toUpperCase()}</Text>
+                </View>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  <Text style={styles.userName} numberOfLines={1}>{item.name}</Text>
+                  <Text style={styles.userSubtitle} numberOfLines={1}>
+                    {item.email}  ·  <Text style={{ color: ROLE_COLOR[item.role] }}>{roleLabel}</Text>
+                  </Text>
+                </View>
+                <View style={[styles.statusChip, { backgroundColor: status.color + '1F', borderColor: status.color + '40' }]}>
+                  {status.icon && <Ionicons name={status.icon} size={10} color={status.color} />}
+                  <Text style={[styles.statusChipText, { color: status.color }]}>{status.label}</Text>
+                </View>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.userName}>{item.name}</Text>
-                <Text style={styles.userEmail}>{item.email}</Text>
-              </View>
-              <View style={[styles.rolePill, { backgroundColor: ROLE_COLOR[item.role] + '22', borderColor: ROLE_COLOR[item.role] + '44' }]}>
-                <Text style={[styles.roleText, { color: ROLE_COLOR[item.role] }]}>
-                  {item.role === 'CAR_OWNER' ? 'Owner' : item.role}
-                </Text>
-              </View>
-            </View>
 
-            {item.role === 'MECHANIC' && (
-              <View style={styles.mechanicMeta}>
-                <Text style={styles.metaText}>{item.specialization || 'General'}</Text>
-                <Text style={styles.metaText}>★ {item.rating || 'N/A'}</Text>
-                <Text style={styles.metaText}>{item.totalJobs || 0} jobs</Text>
-              </View>
-            )}
-
-            <View style={styles.actions}>
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: item.isApproved ? colors.danger + '22' : colors.success + '22' }]}
-                onPress={() => toggleApproval(item._id, item.isApproved)}
-              >
-                <Ionicons name={item.isApproved ? 'ban' : 'checkmark-circle'} size={14} color={item.isApproved ? colors.danger : colors.success} />
-                <Text style={[styles.actionText, { color: item.isApproved ? colors.danger : colors.success }]}>
-                  {item.isApproved ? 'Block' : 'Approve'}
+              {item.role === 'MECHANIC' && (
+                <Text style={styles.metaLine} numberOfLines={1}>
+                  {item.specialization || 'General'}  ·  ★ {item.rating || 'N/A'}  ·  {item.totalJobs || 0} jobs
                 </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionBtn, { backgroundColor: colors.danger + '11' }]}
-                onPress={() => deleteUser(item._id, item.name)}
-              >
-                <Ionicons name="trash" size={14} color={colors.danger} />
-                <Text style={[styles.actionText, { color: colors.danger }]}>Delete</Text>
-              </TouchableOpacity>
-            </View>
-          </Card>
-        )}
+              )}
+
+              <View style={styles.divider} />
+
+              <View style={styles.actionRow}>
+                <View style={styles.actionLeft}>
+                  {item.role === 'MECHANIC' && item.certificateStatus === 'PENDING' && (
+                    <TouchableOpacity style={[styles.primaryAction, { backgroundColor: colors.warning + '1F' }]} onPress={() => openReviewSheet(item)}>
+                      <Ionicons name="document-text-outline" size={14} color={colors.warning} />
+                      <Text style={[styles.primaryActionText, { color: colors.warning }]}>Review certificate</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.role === 'MECHANIC' && item.isCertified && (
+                    <TouchableOpacity style={styles.linkAction} onPress={() => confirmRevoke(item._id)}>
+                      <Ionicons name="shield-outline" size={14} color={colors.textSecondary} />
+                      <Text style={styles.linkActionText}>Revoke certification</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.role === 'MECHANIC' && item.certificateStatus === 'REJECTED' && item.certificateUrl && (
+                    <TouchableOpacity style={styles.linkAction} onPress={() => viewCertificate(item)}>
+                      <Ionicons name="document-text-outline" size={14} color={colors.textSecondary} />
+                      <Text style={styles.linkActionText}>View rejected file</Text>
+                    </TouchableOpacity>
+                  )}
+                  {item.role === 'MECHANIC' && (item.certificateStatus === 'NONE' || !item.certificateStatus) && (
+                    <Text style={styles.mutedHint}>Awaiting upload</Text>
+                  )}
+                </View>
+
+                <View style={styles.actionRight}>
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => toggleApproval(item._id, item.isApproved)}
+                    accessibilityLabel={item.isApproved ? 'Block user' : 'Unblock user'}
+                  >
+                    <Ionicons
+                      name={item.isApproved ? 'ban-outline' : 'checkmark-circle-outline'}
+                      size={18}
+                      color={item.isApproved ? colors.danger : colors.success}
+                    />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.iconBtn}
+                    onPress={() => deleteUser(item._id, item.name)}
+                    accessibilityLabel="Delete user"
+                  >
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Card>
+          );
+        }}
       />
     </SafeAreaView>
   );
@@ -183,19 +308,26 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 12, color: colors.textSecondary, fontWeight: '500' },
   filterTextActive: { color: colors.primary, fontWeight: '700' },
   list: { padding: spacing.lg, paddingTop: 0, paddingBottom: spacing.xxl },
-  userCard: { marginBottom: spacing.sm },
-  userTop: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.sm },
-  avatar: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
-  avatarText: { color: colors.white, fontWeight: '700', fontSize: 16 },
-  userName: { ...typography.body, fontWeight: '600', marginBottom: 2 },
-  userEmail: { ...typography.bodySmall },
-  rolePill: { paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1 },
-  roleText: { fontSize: 10, fontWeight: '700' },
-  mechanicMeta: { flexDirection: 'row', gap: spacing.lg, marginBottom: spacing.sm, paddingLeft: 56 },
-  metaText: { ...typography.bodySmall },
-  actions: { flexDirection: 'row', gap: spacing.sm, paddingLeft: 56 },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.md, paddingVertical: spacing.xs, borderRadius: radius.full },
-  actionText: { fontSize: 12, fontWeight: '600' },
+  userCard: { marginBottom: spacing.sm, padding: spacing.md },
+  userCardBlocked: { opacity: 0.6 },
+  userTop: { flexDirection: 'row', alignItems: 'center' },
+  avatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', marginRight: spacing.md },
+  avatarText: { color: colors.white, fontWeight: '700', fontSize: 17 },
+  userName: { ...typography.body, fontWeight: '700', color: colors.textPrimary, marginBottom: 2 },
+  userSubtitle: { ...typography.bodySmall, color: colors.textSecondary },
+  statusChip: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: spacing.sm, paddingVertical: 3, borderRadius: radius.full, borderWidth: 1, marginLeft: spacing.sm },
+  statusChipText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
+  metaLine: { ...typography.bodySmall, color: colors.textSecondary, marginTop: spacing.sm, paddingLeft: 60 },
+  divider: { height: 1, backgroundColor: colors.border, marginTop: spacing.md, marginBottom: spacing.sm },
+  actionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  actionLeft: { flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: spacing.sm },
+  actionRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  primaryAction: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: spacing.md, paddingVertical: 6, borderRadius: radius.full },
+  primaryActionText: { fontSize: 12, fontWeight: '700' },
+  linkAction: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  linkActionText: { fontSize: 12, fontWeight: '600', color: colors.textSecondary },
+  mutedHint: { fontSize: 12, color: colors.textMuted, fontStyle: 'italic' },
+  iconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: radius.md },
   empty: { alignItems: 'center', paddingTop: spacing.xxl * 2 },
   emptyText: { ...typography.body, color: colors.textSecondary, marginTop: spacing.md },
 });

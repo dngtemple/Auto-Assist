@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  StatusBar, ScrollView, Alert, Platform,
+  StatusBar, ScrollView, Alert, Platform, Linking,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -13,6 +13,7 @@ import Card from '../../components/common/Card';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import Button from '../../components/common/Button';
+import VerifiedBadge from '../../components/common/VerifiedBadge';
 import { colors, spacing, radius, typography } from '../../theme';
 
 const STATUS_STEPS = ['PENDING', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'IN_PROGRESS', 'COMPLETED'];
@@ -84,6 +85,16 @@ export default function TrackingScreen({ route, navigation }: any) {
         },
       },
     ]);
+  };
+
+  const handleContact = (mode: 'tel' | 'sms') => {
+    const phone = request?.mechanic?.phone;
+    if (!phone) {
+      Alert.alert('No phone number', 'This mechanic has not added a phone number.');
+      return;
+    }
+    const clean = phone.replace(/\s+/g, '');
+    Linking.openURL(`${mode}:${clean}`).catch(() => Alert.alert('Error', 'Unable to open the dialer.'));
   };
 
   const handleRate = async (stars: number) => {
@@ -163,8 +174,9 @@ export default function TrackingScreen({ route, navigation }: any) {
         <Card style={styles.progressCard}>
           <Text style={[typography.label, { marginBottom: spacing.md }]}>REQUEST PROGRESS</Text>
           {STATUS_STEPS.map((step, i) => {
-            const done = i < stepIndex;
-            const active = i === stepIndex;
+            const isCompleted = request.status === 'COMPLETED';
+            const done = isCompleted ? i <= stepIndex : i < stepIndex;
+            const active = !isCompleted && i === stepIndex;
             if (step === 'CANCELLED') return null;
             return (
               <View key={step} style={styles.stepRow}>
@@ -194,7 +206,10 @@ export default function TrackingScreen({ route, navigation }: any) {
                 <Ionicons name="person" size={24} color={colors.accent} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={styles.mechanicName}>{request.mechanic.name}</Text>
+                <View style={styles.mechanicNameRow}>
+                  <Text style={styles.mechanicName} numberOfLines={1}>{request.mechanic.name}</Text>
+                  {request.mechanic.isCertified && <VerifiedBadge size="sm" />}
+                </View>
                 <Text style={styles.mechanicSpec}>{request.mechanic.specialization || 'General Mechanic'}</Text>
               </View>
               <View style={styles.ratingBadge}>
@@ -203,11 +218,11 @@ export default function TrackingScreen({ route, navigation }: any) {
               </View>
             </View>
             <View style={styles.contactRow}>
-              <TouchableOpacity style={styles.contactBtn}>
+              <TouchableOpacity style={styles.contactBtn} onPress={() => handleContact('tel')}>
                 <Ionicons name="call" size={16} color={colors.success} />
                 <Text style={[styles.contactBtnText, { color: colors.success }]}>Call</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.contactBtn}>
+              <TouchableOpacity style={styles.contactBtn} onPress={() => handleContact('sms')}>
                 <Ionicons name="chatbubble" size={16} color={colors.info} />
                 <Text style={[styles.contactBtnText, { color: colors.info }]}>Message</Text>
               </TouchableOpacity>
@@ -299,7 +314,8 @@ const styles = StyleSheet.create({
   cardSectionTitle: { ...typography.label, marginBottom: spacing.md },
   mechanicRow: { flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md },
   mechanicAvatar: { width: 48, height: 48, borderRadius: radius.full, backgroundColor: colors.accent + '22', alignItems: 'center', justifyContent: 'center', marginRight: spacing.md, borderWidth: 1, borderColor: colors.accent + '44' },
-  mechanicName: { ...typography.h4, marginBottom: 3 },
+  mechanicNameRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginBottom: 3 },
+  mechanicName: { ...typography.h4, flexShrink: 1 },
   mechanicSpec: { ...typography.bodySmall },
   ratingBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: colors.warning + '22', paddingHorizontal: spacing.sm, paddingVertical: 4, borderRadius: radius.full },
   ratingText: { color: colors.warning, fontSize: 12, fontWeight: '600' },

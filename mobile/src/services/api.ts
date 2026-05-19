@@ -16,6 +16,9 @@ const getBaseUrl = () => {
 
 export const BASE_URL = getBaseUrl();
 
+// Server root (without /api) — useful for resolving static asset paths (e.g. uploaded files).
+export const SERVER_ROOT = BASE_URL.replace(/\/api\/?$/, '');
+
 const api = axios.create({ baseURL: BASE_URL, timeout: 10000 });
 
 api.interceptors.request.use(async (config) => {

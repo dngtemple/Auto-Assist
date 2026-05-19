@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, SafeAreaView, ScrollView,
-  TouchableOpacity, StatusBar, Alert,
+  TouchableOpacity, StatusBar, Alert, Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import MapView, { Marker, PROVIDER_DEFAULT } from 'react-native-maps';
@@ -60,6 +60,16 @@ export default function ActiveJobScreen({ route, navigation }: any) {
 
     return () => { locSub?.remove(); };
   }, [requestId, user?._id]);
+
+  const callOwner = () => {
+    const phone = request?.owner?.phone;
+    if (!phone) {
+      Alert.alert('No phone number', 'This client has not added a phone number.');
+      return;
+    }
+    const clean = phone.replace(/\s+/g, '');
+    Linking.openURL(`tel:${clean}`).catch(() => Alert.alert('Error', 'Unable to open the dialer.'));
+  };
 
   const advanceStatus = async () => {
     if (!request) return;
@@ -127,7 +137,7 @@ export default function ActiveJobScreen({ route, navigation }: any) {
               <Text style={styles.clientName}>{request.owner?.name}</Text>
               <Text style={styles.clientPhone}>{request.owner?.phone || 'No phone'}</Text>
             </View>
-            <TouchableOpacity style={styles.callBtn}>
+            <TouchableOpacity style={styles.callBtn} onPress={callOwner}>
               <Ionicons name="call" size={18} color={colors.success} />
             </TouchableOpacity>
           </View>

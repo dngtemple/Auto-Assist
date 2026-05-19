@@ -8,6 +8,7 @@ import api from '../../services/api';
 import Card from '../../components/common/Card';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import VerifiedBadge from '../../components/common/VerifiedBadge';
 import { colors, spacing, radius, typography } from '../../theme';
 
 export default function HistoryScreen({ navigation }: any) {
@@ -70,7 +71,8 @@ export default function HistoryScreen({ navigation }: any) {
               {item.mechanic && (
                 <View style={styles.mechanicRow}>
                   <Ionicons name="person-circle" size={16} color={colors.textSecondary} />
-                  <Text style={styles.mechanicName}>{item.mechanic.name}</Text>
+                  <Text style={styles.mechanicName} numberOfLines={1}>{item.mechanic.name}</Text>
+                  {item.mechanic.isCertified && <VerifiedBadge size="sm" iconOnly />}
                   {item.rating && (
                     <View style={styles.ratingRow}>
                       <Ionicons name="star" size={12} color={colors.warning} />

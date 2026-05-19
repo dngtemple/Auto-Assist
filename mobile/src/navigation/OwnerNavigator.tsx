@@ -31,6 +31,15 @@ function HomeStack() {
   );
 }
 
+function HistoryStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HistoryMain" component={HistoryScreen} />
+      <Stack.Screen name="Tracking" component={TrackingScreen} />
+    </Stack.Navigator>
+  );
+}
+
 export default function OwnerNavigator() {
   return (
     <Tab.Navigator
@@ -49,7 +58,7 @@ export default function OwnerNavigator() {
       />
       <Tab.Screen
         name="History"
-        component={HistoryScreen}
+        component={HistoryStack}
         options={{ tabBarIcon: ({ color, size }) => <Ionicons name="time" size={size} color={color} /> }}
       />
       <Tab.Screen

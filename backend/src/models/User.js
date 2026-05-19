@@ -16,6 +16,16 @@ const userSchema = new mongoose.Schema(
     rating: { type: Number, default: 0, min: 0, max: 5 },
     totalJobs: { type: Number, default: 0 },
     isApproved: { type: Boolean, default: true },
+    isCertified: { type: Boolean, default: false },
+    certifiedAt: { type: Date, default: null },
+    certifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    certificateUrl: { type: String, default: null },
+    certificateSubmittedAt: { type: Date, default: null },
+    certificateStatus: {
+      type: String,
+      enum: ['NONE', 'PENDING', 'APPROVED', 'REJECTED'],
+      default: 'NONE',
+    },
 
     // GeoJSON for geospatial queries
     location: {

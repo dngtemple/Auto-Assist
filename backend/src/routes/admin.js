@@ -68,6 +68,49 @@ router.patch('/users/:id', ...adminOnly, async (req, res) => {
   }
 });
 
+// Certify / revoke / reject a mechanic's certification.
+// Body: { decision: 'APPROVE' | 'REJECT' | 'REVOKE' }
+// (legacy `isCertified: boolean` still accepted: true → APPROVE, false → REVOKE)
+router.patch('/users/:id/certify', ...adminOnly, async (req, res) => {
+  try {
+    let { decision, isCertified } = req.body;
+    if (!decision && typeof isCertified === 'boolean') {
+      decision = isCertified ? 'APPROVE' : 'REVOKE';
+    }
+    if (!['APPROVE', 'REJECT', 'REVOKE'].includes(decision)) {
+      return res.status(400).json({ message: 'Invalid decision' });
+    }
+
+    const user = await User.findById(req.params.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.role !== 'MECHANIC') {
+      return res.status(400).json({ message: 'Only mechanics can be certified' });
+    }
+
+    if (decision === 'APPROVE') {
+      user.isCertified = true;
+      user.certifiedAt = new Date();
+      user.certifiedBy = req.user._id;
+      user.certificateStatus = 'APPROVED';
+    } else if (decision === 'REJECT') {
+      user.isCertified = false;
+      user.certifiedAt = null;
+      user.certifiedBy = null;
+      user.certificateStatus = 'REJECTED';
+    } else {
+      user.isCertified = false;
+      user.certifiedAt = null;
+      user.certifiedBy = null;
+      if (user.certificateStatus === 'APPROVED') user.certificateStatus = 'PENDING';
+    }
+
+    await user.save();
+    res.json(user);
+  } catch (err) {
+    res.status(400).json({ message: err.message });
+  }
+});
+
 // Delete a user
 router.delete('/users/:id', ...adminOnly, async (req, res) => {
   try {
@@ -86,7 +129,7 @@ router.get('/jobs', ...adminOnly, async (req, res) => {
     if (status) filter.status = status;
     const jobs = await Request.find(filter)
       .populate('owner', 'name email phone')
-      .populate('mechanic', 'name email phone')
+      .populate('mechanic', 'name email phone isCertified')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit));
